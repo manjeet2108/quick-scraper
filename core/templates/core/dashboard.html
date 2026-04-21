@@ -1,0 +1,151 @@
+{% extends "core/base.html" %}
+
+{% block title %}Dashboard — Sociax Sync{% endblock %}
+
+{% block content %}
+<!-- ── STATS GRID ── -->
+<div class="stats-grid">
+    <div class="stat-card accent">
+        <div class="stat-icon">💼</div>
+        <div class="stat-value">{{ total_jobs }}</div>
+        <div class="stat-label">Total Jobs</div>
+    </div>
+    <div class="stat-card green">
+        <div class="stat-icon">✅</div>
+        <div class="stat-value">{{ published_jobs }}</div>
+        <div class="stat-label">Published</div>
+    </div>
+    <div class="stat-card amber">
+        <div class="stat-icon">👁️</div>
+        <div class="stat-value">{{ reviewing_jobs }}</div>
+        <div class="stat-label">Under Review</div>
+    </div>
+    <div class="stat-card cyan">
+        <div class="stat-icon">🛂</div>
+        <div class="stat-value">{{ visa_jobs }}</div>
+        <div class="stat-label">Visa Sponsored</div>
+    </div>
+    <div class="stat-card purple">
+        <div class="stat-icon">📅</div>
+        <div class="stat-value">{{ today_jobs }}</div>
+        <div class="stat-label">Added Today</div>
+    </div>
+    <div class="stat-card red">
+        <div class="stat-icon">🗂️</div>
+        <div class="stat-value">{{ archived_jobs }}</div>
+        <div class="stat-label">Archived</div>
+    </div>
+</div>
+
+<!-- ── QUICK ACTIONS ── -->
+<div class="action-bar"
+    style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center; justify-content: flex-end;">
+
+    <div class="filter-group" style="display: flex; gap: 10px; align-items: center;">
+        <button class="btn btn-primary" id="btn-trigger-sync" onclick="triggerSync()">
+            🚀 Trigger Sync Now
+        </button>
+        <button class="btn btn-danger" onclick="clearAllJobs()">
+            🗑️ Clear All Jobs
+        </button>
+        <a href="{% url 'export_csv' %}" class="btn btn-secondary">📥 Export CSV</a>
+        <a href="{% url 'job_list' %}" class="btn btn-secondary">💼 View All Jobs</a>
+    </div>
+</div>
+
+<!-- ── SOURCE HEALTH ── -->
+<div class="table-container" style="margin-bottom: 32px;">
+    <div class="table-header">
+        <span class="table-title">📡 Source Health — Jobs per Source</span>
+    </div>
+    <div class="source-grid" style="padding: 20px;">
+        {% for source in sources %}
+        <div class="source-card">
+            <div class="source-name">{{ source.source }}</div>
+            <div class="source-count">{{ source.count }}</div>
+            <div class="source-label">jobs</div>
+        </div>
+        {% empty %}
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-muted);">
+            No jobs synced yet. Click "Trigger Sync Now" to start.
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- ── RECENT JOBS ── -->
+<div class="table-container">
+    <div class="table-header">
+        <span class="table-title">🕐 Recently Added Jobs</span>
+        <a href="{% url 'job_list' %}" class="btn btn-sm btn-secondary">View All →</a>
+    </div>
+    {% if recent_jobs %}
+    <table>
+        <thead>
+            <tr>
+                <th>Job</th>
+                <th>Visa</th>
+                <th>Location</th>
+                <th>Source</th>
+                <th>Posted</th>
+                <th>Apply</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in recent_jobs %}
+            <tr data-job-id="{{ job.id }}">
+                <td>
+                    <a href="{% url 'job_detail' job.id %}" style="text-decoration: none;">
+                        <div class="job-title-cell">
+                            {% if job.company_logo %}
+                            <img src="{{ job.company_logo }}" class="job-logo" alt="{{ job.company }}"
+                                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                            <div class="job-logo-placeholder" style="display:none;">{{ job.company|first }}</div>
+                            {% else %}
+                            <div class="job-logo-placeholder">{{ job.company|first }}</div>
+                            {% endif %}
+                            <div class="job-info">
+                                <span class="job-title">{{ job.title }}</span>
+                                <span class="job-company">{{ job.company }}</span>
+                            </div>
+                        </div>
+                    </a>
+                </td>
+                <td><span class="badge badge-visa">{{ job.visa_type|default:"—" }}</span></td>
+                <td class="truncate">{{ job.location }}</td>
+                <td><span class="badge badge-source">{{ job.source }}</span></td>
+                <td style="white-space: nowrap; font-size: 12px;">{{ job.posted_date|date:"M d, Y" }}</td>
+                <td><a href="{{ job.external_apply_link }}" target="_blank" class="apply-link">Apply →</a></td>
+                <td>
+                    <button class="btn btn-sm btn-secondary" onclick="deleteJob({{ job.id }})" title="Delete Job">
+                        ❌
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <h3>No Jobs Yet</h3>
+        <p>Start the sync engine to pull jobs from all 11 sources automatically.</p>
+        <button class="btn btn-primary" onclick="triggerSync()">🚀 Run First Sync</button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ── SYNC LOG ── -->
+<div class="table-container" style="margin-top: 32px;">
+    <div class="table-header">
+        <span class="table-title">📋 Sync Activity Log</span>
+        <span style="font-size: 12px; color: var(--text-muted);" id="last-sync-time">
+            Last sync: {{ last_sync|default:"Never" }}
+        </span>
+    </div>
+    <div class="sync-log" id="sync-log">
+        <div class="log-entry"><span class="log-time">[System]</span> Dashboard loaded. Engine ready.</div>
+    </div>
+</div>
+{% endblock %}

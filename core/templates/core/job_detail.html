@@ -1,0 +1,90 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ job.title }} — Sociax Sync{% endblock %}
+
+{% block content %}
+<div class="detail-container">
+    <a href="{% url 'job_list' %}" class="back-link" style="margin-bottom: 20px; display: inline-flex;">← Back to Jobs</a>
+
+    <div class="detail-card">
+        <!-- Header -->
+        <div class="detail-header">
+            <div class="detail-header-top">
+                {% if job.company_logo %}
+                <img src="{{ job.company_logo }}" class="detail-logo" alt="{{ job.company }}"
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="detail-logo-placeholder" style="display:none;">{{ job.company|first }}</div>
+                {% else %}
+                <div class="detail-logo-placeholder">{{ job.company|first }}</div>
+                {% endif %}
+                <div>
+                    <h1 class="detail-title">{{ job.title }}</h1>
+                    <div class="detail-company">{{ job.company }}</div>
+                </div>
+            </div>
+            <div class="detail-meta">
+                <div class="detail-meta-item">
+                    <span class="icon">📍</span> {{ job.location }}
+                </div>
+                <div class="detail-meta-item">
+                    <span class="icon">💼</span> {{ job.employment_type|default:"Full-time" }}
+                </div>
+                <div class="detail-meta-item">
+                    <span class="icon">📅</span> {{ job.posted_date|date:"M d, Y"|default:"Recently" }}
+                </div>
+                {% if job.salary_range and job.salary_range != "None-None" %}
+                <div class="detail-meta-item">
+                    <span class="icon">💰</span> {{ job.salary_range }}
+                </div>
+                {% endif %}
+                <div class="detail-meta-item">
+                    <span class="icon">🎯</span> {{ job.experience_years|default:"0-5" }} years
+                </div>
+            </div>
+            <div class="detail-badges">
+                {% if job.visa_type %}
+                <span class="badge badge-visa">🛂 {{ job.visa_type }}</span>
+                {% endif %}
+                <span class="badge badge-source">📡 {{ job.source }}</span>
+                <span class="badge badge-entry">🎓 Entry Level</span>
+                {% if job.is_published %}
+                <span class="badge badge-published">✅ Published</span>
+                {% elif job.is_reviewing %}
+                <span class="badge badge-reviewing">👁️ Reviewing</span>
+                {% elif job.is_archived %}
+                <span class="badge badge-archived">🗂️ Archived</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Body -->
+        <div class="detail-body">
+            {% if job.skills %}
+            <div class="detail-section">
+                <h3>Required Skills</h3>
+                <div class="detail-skills">
+                    {% for skill in skills_list %}
+                    <span class="skill-tag">{{ skill }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="detail-section">
+                <h3>Job Description</h3>
+                <div class="detail-description">{{ job.description|linebreaksbr }}</div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="detail-footer">
+            <div style="font-size: 12px; color: var(--text-muted);">
+                Added: {{ job.created_at|date:"M d, Y H:i" }} · ID: {{ job.id }}
+            </div>
+            <a href="{{ job.external_apply_link }}" target="_blank" class="btn btn-primary">
+                🚀 Apply Now →
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

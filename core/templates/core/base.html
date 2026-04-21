@@ -1,0 +1,75 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="Sociax.tech Real-Time Job Sync Dashboard — Monitor visa-sponsored, entry-level jobs across 11 sources.">
+    <title>{% block title %}Sociax Sync Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'core/css/style.css' %}">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- ── NAVBAR ── -->
+        <nav class="navbar" id="main-navbar"
+            style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
+            <div style="display: flex; align-items: center; gap: 40px; flex: 1;">
+                <a href="{% url 'dashboard' %}" class="navbar-brand">
+                    <div class="navbar-logo">S</div>
+                    <div>
+                        <div class="navbar-title">Sociax Sync</div>
+                        <div class="navbar-subtitle">Real-Time Job Engine</div>
+                    </div>
+                </a>
+
+                <!-- Navbar Search Bar -->
+                <form action="{% url 'job_list' %}" method="GET" class="navbar-search"
+                    style="flex: 1; max-width: 500px; position: relative;" onsubmit="handleNavbarSearch(event)">
+                    <button type="submit"
+                        style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 14px; background: none; border: none; cursor: pointer; padding: 0;">🔍</button>
+                    <input type="text" name="q" id="navbar-search-input"
+                        placeholder="Search by job title, developer, engineer..." value="{{ search_query|default:'' }}"
+                        style="width: 100%; padding: 10px 14px 10px 40px; border-radius: 8px; border: 1px solid rgba(99, 102, 241, 0.3); background: rgba(10, 14, 26, 0.4); color: var(--text-primary); font-size: 14px; outline: none; transition: all 0.3s;"
+                        onfocus="this.style.background='rgba(10, 14, 26, 0.8)'; this.style.borderColor='var(--accent)';"
+                        onblur="this.style.background='rgba(10, 14, 26, 0.4)'; this.style.borderColor='rgba(99, 102, 241, 0.3)';">
+                </form>
+            </div>
+
+            <div class="navbar-actions">
+                <!-- <a href="{% url 'dashboard' %}"
+                    class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">📊
+                    Dashboard</a> -->
+                <!-- <a href="{% url 'job_list' %}"
+                    class="nav-link {% if request.resolver_match.url_name == 'job_list' %}active{% endif %}">💼 Jobs</a> -->
+                <!-- <a href="{% url 'export_csv' %}" class="nav-link">📥 Export CSV</a> -->
+                <div class="sync-status {% if sync_running %}running{% else %}idle{% endif %}" id="sync-status">
+                    <span class="dot"></span>
+                    <span id="sync-label">{% if sync_running %}Syncing…{% else %}Idle{% endif %}</span>
+                </div>
+            </div>
+        </nav>
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p id="loading-text">Processing…</p>
+        </div>
+    </div>
+
+    <script src="{% static 'core/js/app.js' %}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+
+</html>
