@@ -15,6 +15,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project
 COPY . .
 
+# Collect static files
+RUN python manage.py collectstatic --noinput
+
 # Run migrations and start the sync engine
 # On Railway/Render, we usually have a web process and a worker process.
 # This CMD can be overridden in Procfile
