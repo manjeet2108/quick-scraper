@@ -3,12 +3,26 @@
 // ═══════════════════════════════════════════════════════════
 
 // ── Toast Notification ──
+// ── Toast Notification (Subtle alerts) ──
 function showToast(message, type = 'success') {
-    const toast = document.getElementById('toast');
-    toast.textContent = message;
-    toast.className = 'toast ' + type;
-    setTimeout(() => toast.classList.add('show'), 10);
-    setTimeout(() => toast.classList.remove('show'), 3500);
+    const Toast = Swal.mixin({
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true,
+        background: '#1a1f33',
+        color: '#ffffff',
+        didOpen: (toast) => {
+            toast.addEventListener('mouseenter', Swal.stopTimer)
+            toast.addEventListener('mouseleave', Swal.resumeTimer)
+        }
+    });
+
+    Toast.fire({
+        icon: type,
+        title: message
+    });
 }
 
 // ── Loading Overlay ──
@@ -37,13 +51,17 @@ function triggerSync() {
     .then(data => {
         hideLoading();
         if (data.status === 'ok') {
-            showToast(`✅ Sync complete! ${data.saved} new jobs added.`);
-            addLogEntry(`Sync complete: ${data.scraped} scraped, ${data.saved} saved`, 'success');
-            // Refresh page after short delay to show new data
-            setTimeout(() => location.reload(), 1500);
+            Swal.fire({
+                title: 'Sync Started!',
+                text: 'The scraper is now running in the background. New jobs will appear on your dashboard automatically.',
+                icon: 'success',
+                background: '#111827',
+                color: '#fff',
+                confirmButtonColor: '#6366f1'
+            });
+            addLogEntry(`Sync started: Background engine active.`, 'success');
         } else {
-            showToast('⚠️ Sync finished with warnings: ' + (data.message || ''), 'error');
-            addLogEntry('Sync error: ' + (data.message || 'Unknown'), 'error');
+            showToast('⚠️ Sync already running', 'warning');
         }
     })
     .catch(err => {
@@ -55,39 +73,67 @@ function triggerSync() {
 
 // ── Delete Job ──
 function deleteJob(jobId) {
-    if (!confirm('Are you sure you want to delete this job?')) return;
-    
-    fetch(`/jobs/${jobId}/delete/`, {
-        method: 'POST',
-        headers: { 'X-CSRFToken': getCookie('csrftoken') }
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === 'ok') {
-            showToast('🗑️ Job deleted');
-            // Remove row from table if it exists
-            const row = document.querySelector(`tr[data-job-id="${jobId}"]`);
-            if (row) row.remove();
-            else location.reload();
+    Swal.fire({
+        title: 'Delete Job?',
+        text: "This job will be permanently removed from your dashboard.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Yes, delete it!',
+        background: '#111827',
+        color: '#fff'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch(`/jobs/${jobId}/delete/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    showToast('🗑️ Job deleted', 'success');
+                    const row = document.querySelector(`tr[data-job-id="${jobId}"]`);
+                    if (row) row.remove();
+                    else setTimeout(() => location.reload(), 500);
+                }
+            });
         }
     });
 }
 
 // ── Clear All Jobs ──
 function clearAllJobs() {
-    if (!confirm('⚠️ Are you sure you want to delete ALL jobs? This cannot be undone.')) return;
-    
-    showLoading('Clearing all jobs…');
-    fetch('/api/clear-all/', {
-        method: 'POST',
-        headers: { 'X-CSRFToken': getCookie('csrftoken') }
-    })
-    .then(res => res.json())
-    .then(data => {
-        hideLoading();
-        if (data.status === 'ok') {
-            showToast('🧹 All jobs cleared');
-            setTimeout(() => location.reload(), 1000);
+    Swal.fire({
+        title: 'Clear All Jobs?',
+        text: "You are about to delete EVERY job from the database. This action is permanent!",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc2626',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: '🧹 Yes, clear everything!',
+        background: '#111827',
+        color: '#fff'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            showLoading('Clearing all jobs…');
+            fetch('/api/clear-all/', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') }
+            })
+            .then(res => res.json())
+            .then(data => {
+                hideLoading();
+                if (data.status === 'ok') {
+                    Swal.fire({
+                        title: 'Database Wiped!',
+                        text: 'All jobs have been removed successfully.',
+                        icon: 'success',
+                        background: '#111827',
+                        color: '#fff'
+                    }).then(() => location.reload());
+                }
+            });
         }
     });
 }
@@ -157,20 +203,84 @@ function getCookie(name) {
     return cookieValue;
 }
 
-// ── Auto-refresh sync status every 30s ──
+// ── Auto-refresh dashboard data every 10-30s ──
 setInterval(() => {
     fetch('/api/status/')
         .then(r => r.json())
         .then(data => {
+            // 1. Update Sync Status Indicator
             const statusEl = document.getElementById('sync-status');
             const labelEl = document.getElementById('sync-label');
+            const triggerBtn = document.getElementById('btn-trigger-sync');
+            
             if (data.syncing) {
                 statusEl.className = 'sync-status running';
                 labelEl.textContent = 'Syncing…';
+                if (triggerBtn) triggerBtn.disabled = true;
             } else {
                 statusEl.className = 'sync-status idle';
                 labelEl.textContent = 'Idle';
+                if (triggerBtn) triggerBtn.disabled = false;
+            }
+
+            // 2. Update Stats Cards (Only on Dashboard)
+            const statsMap = {
+                'total_jobs': '.stat-card.accent .stat-value',
+                'published_jobs': '.stat-card.green .stat-value',
+                'reviewing_jobs': '.stat-card.amber .stat-value',
+                'visa_jobs': '.stat-card.cyan .stat-value',
+                'today_jobs': '.stat-card.purple .stat-value',
+                'archived_jobs': '.stat-card.red .stat-value'
+            };
+
+            for (const [key, selector] of Object.entries(statsMap)) {
+                const el = document.querySelector(selector);
+                if (el) el.textContent = data[key];
+            }
+
+            // 3. Update Sync Log Time
+            const syncTimeEl = document.getElementById('last-sync-time');
+            if (syncTimeEl && data.last_sync) {
+                syncTimeEl.textContent = `Last sync: ${data.last_sync}`;
+            }
+
+            // 4. Update Recent Jobs Table (Only on Dashboard)
+            const tableBody = document.querySelector('.table-container table tbody');
+            if (tableBody && data.recent_jobs && data.recent_jobs.length > 0) {
+                // If it's the dashboard's recent jobs table
+                const rows = data.recent_jobs.map(job => `
+                    <tr data-job-id="${job.id}">
+                        <td>
+                            <a href="${job.url}" style="text-decoration: none;">
+                                <div class="job-title-cell">
+                                    ${job.company_logo ? 
+                                        `<img src="${job.company_logo}" class="job-logo" alt="${job.company}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                         <div class="job-logo-placeholder" style="display:none;">${job.company.charAt(0)}</div>` : 
+                                        `<div class="job-logo-placeholder">${job.company.charAt(0)}</div>`
+                                    }
+                                    <div class="job-info">
+                                        <span class="job-title">${job.title}</span>
+                                        <span class="job-company">${job.company}</span>
+                                    </div>
+                                </div>
+                            </a>
+                        </td>
+                        <td><span class="badge badge-visa">${job.visa_type || '—'}</span></td>
+                        <td class="truncate">${job.location}</td>
+                        <td><span class="badge badge-source">${job.source}</span></td>
+                        <td style="white-space: nowrap; font-size: 12px;">${job.posted_date}</td>
+                        <td><a href="${job.external_apply_link}" target="_blank" class="apply-link">Apply →</a></td>
+                        <td>
+                            <button class="btn btn-sm btn-secondary" onclick="deleteJob(${job.id})" title="Delete Job">❌</button>
+                        </td>
+                    </tr>
+                `).join('');
+                
+                // Only update if content changed to avoid annoying flickering
+                if (tableBody.innerHTML !== rows) {
+                    tableBody.innerHTML = rows;
+                }
             }
         })
         .catch(() => {});
-}, 30000);
+}, 10000); // 10 seconds for a more "live" feel

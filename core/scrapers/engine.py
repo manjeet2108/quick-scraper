@@ -14,6 +14,7 @@ from core.utils import (
     extract_job_metadata
 )
 from core.scrapers.sources import SimplifyScraper, JobrightScraper, MigrateMateScraper
+from core.scrapers.categories import matches_target_titles
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -26,9 +27,10 @@ class ScraperEngine:
         self._last_saved = 0
 
     def run_sync(self):
-        """Run sync across all 3 sources."""
-        log.info("🚀 Starting sync across Simplify, Jobright, MigrateMate...")
+        """Run sync: Simplify & Jobright FIRST, MigrateMate LAST."""
+        log.info("🚀 Starting sync cycle...")
 
+        # Order matters: Reliable sources first
         scrapers = [
             SimplifyScraper(),
             JobrightScraper(),
@@ -41,23 +43,31 @@ class ScraperEngine:
         for scraper in scrapers:
             name = scraper.__class__.__name__
             try:
-                log.info(f"  📡 Running {name}...")
+                log.info(f"  📡 Syncing {name}...")
                 raw_jobs = scraper.fetch()
                 count = len(raw_jobs)
-                total_scraped += count
-                log.info(f"  ← {name} returned {count} raw jobs")
-
+                
+                scraped_for_this = 0
+                saved_for_this = 0
+                
                 for raw in raw_jobs:
-                    saved = self._process_job(raw)
-                    if saved:
-                        total_saved += 1
+                    scraped_for_this += 1
+                    if self._process_job(raw):
+                        saved_for_this += 1
+
+                total_scraped += scraped_for_this
+                total_saved += saved_for_this
+                
+                if count > 0 or "MigrateMate" not in name:
+                    log.info(f"  ← {name} Finished: {scraped_for_this} found, {saved_for_this} new.")
 
             except Exception as e:
-                log.error(f"  ❌ {name} failed: {e}")
+                log.error(f"  ❌ {name} encountered an error: {e}")
 
+        # Final Dashboard Summary
         self._last_scraped = total_scraped
         self._last_saved = total_saved
-        log.info(f"✅ Sync complete. Scraped: {total_scraped}, Saved: {total_saved}")
+        log.info(f"✅ Full Sync Complete: {total_scraped} total scraped, {total_saved} new saved.")
         return total_scraped, total_saved
 
     def _process_job(self, raw):
@@ -81,15 +91,22 @@ class ScraperEngine:
         if not visa_type:
             visa_type = is_visa_sponsored(title, desc) or ''
 
-        # Deduplication
+        # Deduplication (EARLY CHECK to save time)
         job_hash = generate_job_hash(title, company, location)
         if Job.objects.filter(job_hash=job_hash).exists():
             return False
 
-        # Parse date
+        # Filter: Target Job Titles Only (Anil's Custom List)
+        if not matches_target_titles(title):
+            return False
+
+        # Parse date — STRICT: no date = no save
         posted_date = self._parse_date(raw.get('posted_date'))
+        if posted_date is None:
+            log.debug(f"  ⏭️ Skipped (no date): {title} at {company}")
+            return False
         
-        # Filter: 24 Hours Only
+        # Filter: 24 Hours Only — STRICT for all 3 sources
         time_since_posted = timezone.now() - posted_date
         if time_since_posted.total_seconds() > 86400:
             return False
@@ -99,7 +116,7 @@ class ScraperEngine:
         if not logo:
             logo = get_favicon_url(company, url)
 
-        # Extract dynamic description
+        # Extract dynamic description (Expensive - only do if job is new and relevant)
         if len(desc) < 300:
             fetched_desc = fetch_full_description(url)
             if fetched_desc:
@@ -130,7 +147,11 @@ class ScraperEngine:
             return True
 
         except Exception as e:
-            log.error(f"  Save error: {e}")
+            from django.db import IntegrityError
+            if isinstance(e, IntegrityError):
+                log.debug(f"  ⏭️ Skipped (Existing ID/Hash): {title}")
+            else:
+                log.error(f"  ❌ Save error: {e}")
             return False
 
     def _derive_skills(self, desc):
@@ -148,8 +169,9 @@ class ScraperEngine:
         return ", ".join(found)
 
     def _parse_date(self, date_val):
+        """Parse date value. Returns None if unparseable — job will be skipped."""
         if not date_val:
-            return timezone.now()
+            return None
         if isinstance(date_val, datetime):
             if date_val.tzinfo is None:
                 return timezone.make_aware(date_val)
@@ -161,7 +183,7 @@ class ScraperEngine:
                 return timezone.make_aware(dt)
             return dt
         except Exception:
-            return timezone.now()
+            return None
 
     def remove_expired_jobs(self, days=30):
         """Archive jobs older than N days."""

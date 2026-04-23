@@ -164,11 +164,36 @@ def api_trigger_sync(request):
 
 
 def api_status(request):
-    """API endpoint for sync status polling."""
+    """Enriched API endpoint for sync status and real-time dashboard updates."""
+    now = timezone.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    recent_jobs_query = Job.objects.order_by('-created_at')[:15]
+    recent_jobs = []
+    for j in recent_jobs_query:
+        recent_jobs.append({
+            'id': j.id,
+            'title': j.title,
+            'company': j.company,
+            'company_logo': j.company_logo,
+            'location': j.location,
+            'source': j.source,
+            'visa_type': j.visa_type,
+            'posted_date': j.posted_date.strftime('%b %d, %Y') if j.posted_date else '—',
+            'external_apply_link': j.external_apply_link,
+            'url': f"/jobs/{j.id}/"
+        })
+
     return JsonResponse({
         'syncing': _sync_state['running'],
         'last_sync': _sync_state['last_sync'],
         'total_jobs': Job.objects.count(),
+        'published_jobs': Job.objects.filter(is_published=True).count(),
+        'reviewing_jobs': Job.objects.filter(is_reviewing=True).count(),
+        'visa_jobs': Job.objects.exclude(visa_type='').exclude(visa_type__isnull=True).count(),
+        'today_jobs': Job.objects.filter(created_at__gte=today_start).count(),
+        'archived_jobs': Job.objects.filter(is_archived=True).count(),
+        'recent_jobs': recent_jobs,
     })
 
 

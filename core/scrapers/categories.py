@@ -1,89 +1,76 @@
 # core/scrapers/categories.py
 
 JOB_CATEGORIES = {
-    "1. Software & Technology": [
-        "Software Engineer", "Software Developer", "Backend Developer", "Frontend Developer",
-        "Full Stack Developer", "Web Developer", "Mobile Developer", "iOS Developer",
-        "Android Developer", "Game Developer", "DevOps Engineer", "Site Reliability Engineer",
-        "Cloud Engineer", "Platform Engineer", "Systems Engineer", "Embedded Systems Engineer",
-        "Firmware Engineer", "Application Developer", "Technical Lead", "Engineering Manager",
-        "Chief Technology Officer"
+    "Software Engineering": [
+        "Software Engineer", "Software Developer", "Backend Developer", "Full Stack Developer",
+        "Frontend Developer", "Platform Engineer", "Systems Engineer", "Java Backend Developer",
+        "Java Developer", "iOS Developer", "Android Developer", "React Native Developer",
+        "Blockchain Developer", "Graphics Engineer", "SAP Developer", ".NET Developer",
+        "Embedded Systems Engineer", "Power Platform Developer"
     ],
-    "2. Data & AI": [
-        "Data Scientist", "Data Analyst", "Data Engineer", "Machine Learning Engineer",
-        "AI Engineer", "Deep Learning Engineer", "NLP Engineer", "Computer Vision Engineer",
-        "Analytics Engineer", "Business Intelligence Analyst", "BI Developer", "Data Architect",
-        "Data Governance Specialist", "MLOps Engineer", "Research Scientist AI"
+    "Infrastructure & DevOps": [
+        "Cloud Engineer", "DevOps Engineer", "Cloud Developer", "Site Reliability Engineer",
+        "Security Engineer", "Network Engineer", "Systems Administrator", "AWS Java Developer",
+        "AWS Azure", "AWS DevOps Engineer"
     ],
-    "3. Cybersecurity": [
-        "Cybersecurity Analyst", "Security Engineer", "Security Architect", "Penetration Tester",
-        "Ethical Hacker", "Information Security Analyst", "Security Operations Analyst",
-        "SOC Analyst", "Cloud Security Engineer", "Application Security Engineer", "CISO"
+    "Data & AI": [
+        "Data Analyst", "Data Engineer", "Data Science", "Machine Learning Engineer",
+        "AI Engineer", "Gen AI", "Analytics Engineer", "Business Intelligence Analyst",
+        "ETL Developer", "SQL Developer"
     ],
-    "4. Product & Project Management": [
-        "Product Manager", "Senior Product Manager", "Product Owner", "Product Analyst",
-        "Technical Product Manager", "Program Manager", "Project Manager",
-        "Technical Program Manager", "Scrum Master", "Agile Coach", "Delivery Manager"
+    "Security": [
+        "Security Engineer", "Cybersecurity Analyst", "Security Analyst", 
+        "Application Security Engineer", "Network Security Engineer", "Information Security Analyst"
     ],
-    "5. Design & Creative": [
-        "UX Designer", "UI Designer", "Product Designer", "Graphic Designer",
-        "Motion Designer", "Visual Designer", "Interaction Designer", "Web Designer",
-        "Creative Director", "Art Director", "Animator", "Game Designer"
+    "Quality & Testing": [
+        "QA Engineer", "Test Engineer", "Automation Test Engineer", "QA Analyst", "SDET", 
+        "Quality Engineer", "Quality Control"
     ],
-    "6. Marketing": [
-        "Marketing Manager", "Digital Marketing Manager", "Growth Marketer", "SEO Specialist",
-        "SEM Specialist", "Content Marketing Manager", "Social Media Manager", "Brand Manager",
-        "Marketing Analyst", "Performance Marketing Manager", "Marketing Operations Manager"
+    "Management": [
+        "Product Manager", "Engineering Manager", "Project Manager", "Program Manager",
+        "Supply Chain Manager", "Finance Manager", "Product Owner", "Marketing Manager"
     ],
-    "7. Sales": [
-        "Sales Representative", "Account Executive", "Account Manager", "Sales Manager",
-        "Regional Sales Manager", "Business Development Representative", "Sales Development Representative",
-        "Enterprise Sales Executive", "Customer Success Manager", "Partnerships Manager", "Chief Revenue Officer"
+    "Design": [
+        "UI Designer", "UX Designer", "Product Designer", "UI UX Designer"
     ],
-    "8. Finance": [
-        "Financial Analyst", "Accountant", "Senior Accountant", "Tax Consultant",
-        "Auditor", "Investment Banker", "Portfolio Manager", "Risk Analyst",
-        "Treasury Analyst", "Finance Manager", "CFO"
+    "Support & IT": [
+        "IT Support Engineer", "Technical Support Engineer", "Salesforce Administrator",
+        "Technical Support"
     ],
-    "9. Human Resources": [
-        "HR Generalist", "HR Manager", "Talent Acquisition Specialist", "Technical Recruiter",
-        "HR Business Partner", "People Operations Manager", "Compensation Analyst",
-        "Learning & Development Manager", "HR Director", "Chief Human Resources Officer"
-    ],
-    "10. Operations": [
-        "Operations Manager", "Business Operations Analyst", "Supply Chain Manager",
-        "Logistics Coordinator", "Procurement Specialist", "Vendor Manager",
-        "Operations Analyst", "Plant Manager", "COO"
-    ],
-    "11. Healthcare": [
-        "Doctor", "Physician", "Surgeon", "Nurse", "Nurse Practitioner", "Pharmacist",
-        "Medical Assistant", "Radiologist", "Lab Technician", "Physical Therapist",
-        "Healthcare Administrator"
-    ],
-    "12. Legal": [
-        "Lawyer", "Attorney", "Legal Counsel", "Corporate Counsel", "Legal Analyst",
-        "Paralegal", "Compliance Officer", "Contract Manager", "Legal Operations Manager"
-    ],
-    "13. Education": [
-        "Teacher", "Lecturer", "Professor", "Teaching Assistant", "Instructional Designer",
-        "Academic Advisor", "School Counselor", "Principal", "Education Consultant"
-    ],
-    "14. Customer Support": [
-        "Customer Support Representative", "Customer Success Manager", "Technical Support Engineer",
-        "Help Desk Technician", "Support Specialist", "Call Center Agent"
-    ],
-    "15. Business & Strategy": [
-        "Business Analyst", "Strategy Analyst", "Management Consultant", "Business Consultant",
-        "Corporate Strategy Manager", "Operations Consultant"
-    ],
-    "16. Engineering Non-Software": [
-        "Mechanical Engineer", "Electrical Engineer", "Civil Engineer", "Chemical Engineer",
-        "Industrial Engineer", "Manufacturing Engineer", "Aerospace Engineer"
+    "Specialized": [
+        "SAP", "Salesforce Developer", "Business Analyst", "Supply Chain", 
+        "Marketing Analyst", "Aerospace Engineer", "Mechanical Engineer", 
+        "Civil Engineer", "Physical Therapist", "Finance Analyst", "Risk Analyst", 
+        "Product Analyst", "Clinical Research Scientist", "Drug Safety Associate",
+        "Construction Engineer"
     ]
 }
 
 def get_all_titles():
+    """Returns a flat list of all relevant job titles for filtering."""
     titles = []
     for cat in JOB_CATEGORIES.values():
         titles.extend(cat)
     return titles
+
+def matches_target_titles(title):
+    """
+    Check if a job title matches any of the target categories.
+    Uses fuzzy matching (substring) for better coverage.
+    """
+    if not title:
+        return False
+    
+    title_lower = title.lower()
+    all_titles = get_all_titles()
+    
+    for target in all_titles:
+        target_lower = target.lower()
+        # Direct match or target is a significant part of the title
+        if target_lower in title_lower:
+            # Avoid too broad matches (e.g., "SAP" shouldn't match "Disappearing")
+            if len(target_lower) > 3 or f" {target_lower} " in f" {title_lower} ":
+                return True
+                
+    return False
+
