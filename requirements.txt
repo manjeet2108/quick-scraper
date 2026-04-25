@@ -6,3 +6,5 @@ pandas>=2.1.0
 gunicorn>=21.2.0
 python-dateutil>=2.8.2
 whitenoise>=6.5.0
+beautifulsoup4>=4.12.0
+cloudscraper>=1.2.71
