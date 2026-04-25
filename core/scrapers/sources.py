@@ -12,6 +12,7 @@ import cloudscraper
 import hashlib
 from datetime import datetime, timezone as tz
 from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 log = logging.getLogger('sociax_sync')
@@ -44,6 +45,114 @@ scraper.headers.update({
     'Upgrade-Insecure-Requests': '1',
     'DNT': '1',
 })
+
+
+# ═══════════════════════════════════════════════════════════
+#  LINK RESOLVER — Get Direct Company Links
+# ═══════════════════════════════════════════════════════════
+class LinkResolver:
+    """
+    Utility to resolve intermediate job portal links (Jobright, MigrateMate)
+    to direct company career sites (Workday, Lever, Greenhouse, etc.).
+    """
+    COMMON_PORTALS = [
+        'workday', 'lever.co', 'greenhouse.io', 'ashbyhq.com', 'breezy.hr',
+        'smartrecruiters.com', 'myworkdayjobs.com', 'jobs.ashbyhq.com',
+        'applytojob.com', 'jobvite.com', 'recruitee.com', 'personio.',
+        'taleo.net', 'icims.com', 'brassring.com', 'avature.net', 'successfactors'
+    ]
+    session = scraper # Map global scraper here
+
+    @classmethod
+    def resolve_batch(cls, jobs, scraper_session=None, max_workers=5):
+        """Resolves links for a list of jobs in parallel."""
+        log.info(f"    🔍 Resolving direct links for {len(jobs)} jobs...")
+        
+        # Use provided session or global scraper
+        session = scraper_session or scraper
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_job = {}
+            for job in jobs:
+                link = job.get('external_apply_link', '')
+                if any(x in link for x in ['jobright.ai', 'migratemate.co']):
+                    future_to_job[executor.submit(cls.resolve_single, link, session)] = job
+            
+            for future in as_completed(future_to_job):
+                job = future_to_job[future]
+                try:
+                    direct_link = future.result()
+                    if direct_link:
+                        job['external_apply_link'] = direct_link
+                        log.info(f"      🔗 Resolved: {job['company'][:15]} -> {urlparse(direct_link).netloc}")
+                except Exception:
+                    pass
+
+    @classmethod
+    def resolve_single(cls, url, session):
+        """Resolves a single intermediate link."""
+        try:
+            # Random delay to be nice
+            time.sleep(random.uniform(0.5, 1.5))
+            
+            resp = session.get(url, timeout=10)
+            if resp.status_code != 200:
+                return None
+            
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            
+            # Strategy 1: Look for common portals in the HTML
+            for a in soup.find_all('a', href=True):
+                href = a['href']
+                if any(portal in href.lower() for portal in cls.COMMON_PORTALS):
+                    return href
+            
+            # Strategy 2: Look for 'Apply' buttons/links that aren't internal
+            for a in soup.find_all('a', href=True, string=re.compile(r'Apply', re.I)):
+                href = a['href']
+                if href.startswith('http') and 'jobright.ai' not in href and 'migratemate.co' not in href:
+                    return href
+                    
+            # Strategy 3: Check __NEXT_DATA__ for Jobright
+            if 'jobright.ai' in url:
+                script = soup.find('script', id='__NEXT_DATA__')
+                if script:
+                    try:
+                        data = json.loads(script.string)
+                        def find_all_urls(obj, collection):
+                            if isinstance(obj, str) and obj.startswith('http'):
+                                # Block social/static/common news
+                                blocked = ['jobright.ai', 'google', 'linkedin', 'facebook', 'twitter', 'crunchbase', 'x.com', 'glassdoor', 'favicon', 'logo', 'icon', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', 'media.li', 'decrypt.co', 'prnewswire', 'disruptafrica', 'techrseries']
+                                if not any(x in obj.lower() for x in blocked):
+                                    collection.append(obj)
+                            elif isinstance(obj, dict):
+                                for v in obj.values(): find_all_urls(v, collection)
+                            elif isinstance(obj, list):
+                                for i in obj: find_all_urls(i, collection)
+
+                        candidates = []
+                        find_all_urls(data, candidates)
+                        
+                        if candidates:
+                            # Rank candidates: 
+                            # 1. Known ATS or Jobs subdomain (Greenhouse, Lever, etc)
+                            # 2. Contains specific job-link keywords
+                            # 3. Specificity (Longer URLs are usually actual job posts)
+                            ranked = sorted(candidates, key=lambda x: (
+                                any(p in x.lower() for p in cls.COMMON_PORTALS + ['jobs.', 'careers.', 'career.']),
+                                any(kw in x.lower() for kw in ['/job/', '/jobs/', '/apply', '/careers/']),
+                                len(x) # LONGER is usually more specific (the actual post)
+                            ), reverse=True)
+                            
+                            best_link = ranked[0]
+                            log.info(f"      ✨ Best candidate: {best_link[:50]}...")
+                            return best_link
+                        return None
+                    except: pass
+
+        except Exception:
+            pass
+        return None
 
 
 # ═══════════════════════════════════════════════════════════
@@ -181,137 +290,147 @@ class JobrightScraper:
         log.info(f"    🚀 Fetching Jobright repos in parallel...")
         
         def fetch_repo(repo):
+            # Use a fresh scraper per thread for maximum isolation
+            s = create_stealth_scraper()
             try:
-                # Try 'main' then 'master' branch
-                for branch in ['main', 'master']:
-                    url = f"https://raw.githubusercontent.com/jobright-ai/{repo}/refs/heads/{branch}/README.md"
-                    resp = scraper.get(url, timeout=15)
-                    if resp.status_code == 200:
-                        parsed = self._parse_markdown_table(resp.text, repo)
-                        return parsed
+                # Try 'master' branch by default (most current)
+                branch = 'master'
+                url = f"https://raw.githubusercontent.com/jobright-ai/{repo}/{branch}/README.md"
+                
+                resp = s.get(url, timeout=25)
+                if resp.status_code == 200:
+                    return self._parse_markdown_table(resp.text, repo)
+                
+                # Fallback to 'main'
+                branch = 'main'
+                url = f"https://raw.githubusercontent.com/jobright-ai/{repo}/{branch}/README.md"
+                resp = s.get(url, timeout=25)
+                if resp.status_code == 200:
+                    return self._parse_markdown_table(resp.text, repo)
+                
+                # Fallback to 'master' (Common in older Jobright repos)
+                branch = 'master'
+                url = f"https://raw.githubusercontent.com/jobright-ai/{repo}/{branch}/README.md"
+                resp = s.get(url, timeout=25)
+                if resp.status_code == 200:
+                    return self._parse_markdown_table(resp.text, repo)
+                
                 return []
             except Exception as e:
-                log.error(f"    ❌ Jobright {repo} error: {e}")
+                log.debug(f"    ⚠️ Jobright {repo} skip: {e}")
                 return []
 
-        # Focus on repos matching Anil's interests (New Grad + Engineering)
-        priority_repos = [r for r in self.REPOS if 'Internship' not in r]
-        # Include internships as well but prioritize New Grad
-        other_repos = [r for r in self.REPOS if 'Internship' in r]
-        
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_repo = {executor.submit(fetch_repo, r): r for r in priority_repos + other_repos}
+        # Concurrency for speed
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_repo = {executor.submit(fetch_repo, r): r for r in self.REPOS}
             for future in as_completed(future_to_repo):
                 result = future.result()
                 if result:
                     jobs.extend(result)
         
-        log.info(f"    ✅ Jobright total: {len(jobs)}")
+        log.info(f"    ✅ Jobright total: {len(jobs)} jobs fetched from GitHub.")
         return jobs
 
     def _parse_markdown_table(self, md_text, repo_name):
         """Parse markdown table rows into job dicts."""
         jobs = []
-        lines = md_text.split('\n')
+        rows = md_text.split('\n')
+        col_map = {'title': 1, 'company': 0, 'location': 2} # default indices
 
-        for line in lines:
-            # Match table rows: | col1 | col2 | col3 | ...
-            if not line.strip().startswith('|'):
-                continue
-            # Skip header/separator rows
-            if '---' in line or 'Company' in line and 'Title' in line:
-                continue
+        # 1. Identify columns Fuzzy (Role/Title, Company, Location, Date, Link)
+        for row in rows:
+            if '|' in row and any(x in row.lower() for x in ['company', 'title', 'role', 'location']):
+                cols = [c.strip() for c in row.split('|')]
+                if cols and not cols[0]: cols = cols[1:]
+                if cols and not cols[-1]: cols = cols[:-1]
+                for i, h in enumerate(cols):
+                    hl = h.lower()
+                    if any(x in hl for x in ['role', 'title', 'position']): col_map['title'] = i
+                    elif 'company' in hl: col_map['company'] = i
+                    elif 'location' in hl: col_map['location'] = i
+                    elif 'date' in hl: col_map['date'] = i
+                break # Found header
 
-            cells = [c.strip() for c in line.split('|')[1:-1]]
-            if len(cells) < 4:
-                continue
+        # 2. Parse data rows
+        for row in rows:
+            if '---' in row or not '|' in row: continue
+            if any(x in row.lower() for x in ['company', 'title', 'role', 'location']): continue
+            
+            cols = [c.strip() for c in row.split('|')]
+            if cols and not cols[0]: cols = cols[1:]
+            if cols and not cols[-1]: cols = cols[:-1]
+            if len(cols) < 2: continue
 
-            # Typical format: | Date | Company | Title | Location | Link |
-            # But format varies. Try to extract intelligently.
-            company = ''
-            title = ''
-            location = ''
-            apply_link = ''
-            date_str = ''
+            try:
+                # Meta extraction
+                md_links = re.findall(r'\[[^\]]*\]\((https?://[^\)]+)\)', row)
+                raw_urls = re.findall(r'https?://[^\s\|\]\)]+', row)
+                apply_link = ""
+                for u in (md_links + raw_urls):
+                    if 'jobright.ai/jobs/info/' in u: 
+                        apply_link = u
+                        break
+                if not apply_link and md_links: apply_link = md_links[0]
 
-            # Extract links from markdown [text](url)
-            link_pattern = r'\[([^\]]*)\]\(([^)]*)\)'
+                def clean_field(txt):
+                    if not txt: return ""
+                    txt = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', txt)
+                    txt = re.sub(r'<[^>]+>', '', txt)
+                    return txt.strip(' *').replace('↳', '').strip()
 
-            for i, cell in enumerate(cells):
-                links = re.findall(link_pattern, cell)
-                clean = re.sub(link_pattern, r'\1', cell).strip()
-                clean = re.sub(r'<[^>]+>', '', clean).strip()  # Remove HTML tags
-                clean = re.sub(r'\*\*(.*?)\*\*', r'\1', clean) # Remove markdown bold
-                clean = clean.replace('↳', '').replace('**', '').replace('[', '').replace(']', '').strip()
+                title = clean_field(cols[col_map.get('title')] if col_map.get('title', 99) < len(cols) else "")
+                company = clean_field(cols[col_map.get('company')] if col_map.get('company', 99) < len(cols) else "")
+                location = clean_field(cols[col_map.get('location')] if col_map.get('location', 99) < len(cols) else "")
 
-                if not clean and not links:
-                    continue
+                if not title or not company: continue
 
-                # Date detection (Apr 19, 2026 or similar)
-                if re.match(r'^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}', clean):
-                    date_str = clean
-                    continue
-
-                # If cell has a link and no company yet → company
-                if links and not company:
-                    company = links[0][0]
-                    if not apply_link and links[0][1].startswith('http'):
-                        apply_link = links[0][1]
-                    continue
-
-                # Title detection (contains role keywords or has apply link)
-                if not title:
-                    if links:
-                        title = links[0][0]
-                        apply_link = links[0][1] if links[0][1].startswith('http') else apply_link
-                    else:
-                        title = clean
-                    continue
-
-                # Location 
-                if not location and clean:
-                    location = clean
-                    continue
-
-                # Remaining links might be apply links
-                if links and not apply_link:
-                    for text, url in links:
-                        if url.startswith('http'):
-                            apply_link = url
+                # Validation & Refinement
+                if not location or len(location) > 40 or 'http' in location or any(x in location.lower() for x in ['engineer', 'intern', 'developer']):
+                    location = "USA"
+                    for c in cols:
+                        if any(l in c.lower() for l in ['remote', 'san francisco', 'new york', 'london', 'aus', 'wa', 'ca', 'tx']):
+                            location = clean_field(c)
                             break
-
-            if title and company:
-                # Stable MD5 ID
-                raw_id = f"jr-{company}-{title}-{location or 'usa'}".lower()
-                stable_id = hashlib.md5(raw_id.encode()).hexdigest()[:12]
-
+                
+                source_id = hashlib.md5(f"{title}{company}{location}".lower().encode()).hexdigest()[:12]
                 jobs.append({
                     'source': f'Jobright/{repo_name}',
-                    'source_job_id': f"jr-{stable_id}",
+                    'source_job_id': f"jr-{source_id}",
                     'title': title,
                     'company': company,
                     'location': location or 'USA',
-                    'description': f"{title} at {company}. Source: Jobright.ai ({repo_name})",
-                    'external_apply_link': apply_link or '',
-                    'employment_type': 'Internship' if 'Internship' in repo_name else 'Full-time',
-                    'salary_range': '',
-                    'company_logo': '',
-                    'posted_date': self._parse_date(date_str),
+                    'description': f"{title} at {company} in {location or 'USA'}. Source: Jobright.ai ({repo_name})",
+                    'external_apply_link': apply_link,
+                    'employment_type': 'Internship' if 'internship' in repo_name.lower() or 'intern' in title.lower() else 'Full-time',
+                    'posted_date': self._parse_date(cols[col_map.get('date')] if col_map.get('date', 99) < len(cols) else ""),
                     'visa_type': '',
+                    'company_logo': ''
                 })
+            except Exception: continue
+        return jobs
 
         return jobs
 
     def _parse_date(self, date_str):
         if not date_str:
             return None
+        date_str = date_str.strip(' *')
         try:
-            # Try "Apr 19" format (assume current year)
-            from datetime import datetime
+            # 1. Try "2026-04-25" format
+            if re.match(r'\d{4}-\d{2}-\d{2}', date_str):
+                dt = datetime.strptime(date_str, "%Y-%m-%d")
+                return dt.replace(tzinfo=tz.utc)
+            
+            # 2. Try "Apr 19" format (assume current year)
             dt = datetime.strptime(f"{date_str}, 2026", "%b %d, %Y")
             return dt.replace(tzinfo=tz.utc)
         except Exception:
-            return None
+            try:
+                # 3. Try "19 Apr" format
+                dt = datetime.strptime(f"{date_str}, 2026", "%d %b, %Y")
+                return dt.replace(tzinfo=tz.utc)
+            except Exception:
+                return None
 
 
 # ═══════════════════════════════════════════════════════════
@@ -377,6 +496,7 @@ class MigrateMateScraper:
 
             parsed = self._parse_html(resp.text, cat_name)
             jobs.extend(parsed)
+            
             log.info(f"    ← Stealth success ({cat_name}): {len(parsed)} jobs")
 
         except Exception as e:
