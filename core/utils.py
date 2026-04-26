@@ -152,7 +152,11 @@ def is_us_based(location):
     return False
 
 def is_direct_link(url):
-    blocked_domains = ['linkedin.com', 'glassdoor.com', 'indeed.com', 'ziprecruiter.com', 'monster.com']
+    blocked_domains = [
+        'linkedin.com', 'glassdoor.com', 'indeed.com', 'ziprecruiter.com', 'monster.com',
+        'crunchbase.com', 'prnewswire.com', 'businesswire.com', 'facebook.com', 'twitter.com',
+        'x.com', 'instagram.com', 'decrypt.co', 'alleywatch.com'
+    ]
     for domain in blocked_domains:
         if domain in url.lower():
             return False
