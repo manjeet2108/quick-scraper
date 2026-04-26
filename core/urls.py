@@ -9,5 +9,6 @@ urlpatterns = [
     path('jobs/<int:job_id>/delete/', views.delete_job, name='delete_job'),
     path('api/clear-all/', views.clear_all_jobs, name='clear_all_jobs'),
     path('api/trigger-sync/', views.api_trigger_sync, name='api_trigger_sync'),
+    path('api/stop-sync/', views.api_stop_sync, name='api_stop_sync'),
     path('api/status/', views.api_status, name='api_status'),
 ]

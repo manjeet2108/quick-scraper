@@ -42,96 +42,106 @@
 
     {% if jobs %}
     <div style="overflow-x: auto;">
-    <table>
-        <thead>
-            <tr>
-                <th>Job</th>
-                <th>Visa Type</th>
-                <th>Location</th>
-                <th>Source</th>
-                <th>Type</th>
-                <th>Salary</th>
-                <th>Posted</th>
-                <th>Status</th>
-                <th>Apply</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for job in jobs %}
-            <tr>
-                <td>
-                    <a href="{% url 'job_detail' job.id %}" style="text-decoration: none;">
-                        <div class="job-title-cell">
-                            {% if job.company_logo %}
-                            <img src="{{ job.company_logo }}" class="job-logo" alt="{{ job.company }}"
-                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                            <div class="job-logo-placeholder" style="display:none;">{{ job.company|first }}</div>
-                            {% else %}
-                            <div class="job-logo-placeholder">{{ job.company|first }}</div>
-                            {% endif %}
-                            <div class="job-info">
-                                <span class="job-title">{{ job.title|truncatechars:50 }}</span>
-                                <span class="job-company">{{ job.company }}</span>
+        <table>
+            <thead>
+                <tr>
+                    <th>Job</th>
+                    <th>Visa Type</th>
+                    <th>Location</th>
+                    <th>Source</th>
+                    <th>Type</th>
+                    <th>Salary</th>
+                    <th>Posted</th>
+                    <th>Status</th>
+                    <th>Apply</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in jobs %}
+                <tr>
+                    <td>
+                        <a href="{% url 'job_detail' job.id %}" style="text-decoration: none;">
+                            <div class="job-title-cell">
+                                {% if job.company_logo %}
+                                <img src="{{ job.company_logo }}" class="job-logo" alt="{{ job.company }}"
+                                    onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                <div class="job-logo-placeholder" style="display:none;">{{ job.company|first }}</div>
+                                {% else %}
+                                <div class="job-logo-placeholder">{{ job.company|first }}</div>
+                                {% endif %}
+                                <div class="job-info">
+                                    <span class="job-title">{{ job.title|truncatechars:50 }}</span>
+                                    <span class="job-company">{{ job.company }}</span>
+                                </div>
                             </div>
-                        </div>
-                    </a>
-                </td>
-                <td><span class="badge badge-visa">{{ job.visa_type|default:"—" }}</span></td>
-                <td class="truncate">{{ job.location }}</td>
-                <td><span class="badge badge-source">{{ job.source }}</span></td>
-                <td style="font-size: 12px;">{{ job.employment_type|default:"—" }}</td>
-                <td style="font-size: 12px; white-space: nowrap;">{{ job.salary_range|default:"—" }}</td>
-                <td style="font-size: 12px; white-space: nowrap;">{{ job.posted_date|date:"M d" }}</td>
-                <td>
-                    {% if job.is_published %}
-                    <span class="badge badge-published">Published</span>
-                    {% elif job.is_reviewing %}
-                    <span class="badge badge-reviewing">Reviewing</span>
-                    {% elif job.is_archived %}
-                    <span class="badge badge-archived">Archived</span>
-                    {% endif %}
-                </td>
-                <td>
-                    <a href="{{ job.external_apply_link }}" target="_blank" class="apply-link">Apply →</a>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                        </a>
+                    </td>
+                    <td><span class="badge badge-visa">{{ job.visa_type|default:"—" }}</span></td>
+                    <td class="truncate">{{ job.location }}</td>
+                    <td><span class="badge badge-source">{{ job.source }}</span></td>
+                    <td style="font-size: 12px;">{{ job.employment_type|default:"—" }}</td>
+                    <td style="font-size: 12px; white-space: nowrap;">{{ job.salary_range|default:"—" }}</td>
+                    <td style="font-size: 12px; white-space: nowrap;">{{ job.posted_date_relative }}</td>
+                    <td>
+                        {% if job.is_published %}
+                        <span class="badge badge-published">Published</span>
+                        {% elif job.is_reviewing %}
+                        <span class="badge badge-reviewing">Reviewing</span>
+                        {% elif job.is_archived %}
+                        <span class="badge badge-archived">Archived</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ job.external_apply_link }}" target="_blank" class="apply-link">Apply →</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 
     <!-- Pagination -->
     <div class="pagination">
         {% if jobs.has_previous %}
-        <a href="?page=1{% if search_query %}&q={{ search_query }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">&laquo; First</a>
-        <a href="?page={{ jobs.previous_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">&lsaquo; Prev</a>
+        <a
+            href="?page=1{% if search_query %}&q={{ search_query }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">&laquo;
+            First</a>
+        <a
+            href="?page={{ jobs.previous_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">&lsaquo;
+            Prev</a>
         {% else %}
         <span class="disabled">&laquo; First</span>
         <span class="disabled">&lsaquo; Prev</span>
         {% endif %}
 
         {% for num in jobs.paginator.page_range %}
-            {% if jobs.number == num %}
-            <span class="current">{{ num }}</span>
-            {% elif num > jobs.number|add:'-3' and num < jobs.number|add:'3' %}
-            <a href="?page={{ num }}{% if search_query %}&q={{ search_query }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">{{ num }}</a>
+        {% if jobs.number == num %}
+        <span class="current">{{ num }}</span>
+        {% elif num > jobs.number|add:'-3' and num < jobs.number|add:'3' %} <a
+            href="?page={{ num }}{% if search_query %}&q={{ search_query }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">
+            {{ num }}</a>
             {% endif %}
-        {% endfor %}
+            {% endfor %}
 
-        {% if jobs.has_next %}
-        <a href="?page={{ jobs.next_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">Next &rsaquo;</a>
-        <a href="?page={{ jobs.paginator.num_pages }}{% if search_query %}&q={{ search_query }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">Last &raquo;</a>
-        {% else %}
-        <span class="disabled">Next &rsaquo;</span>
-        <span class="disabled">Last &raquo;</span>
-        {% endif %}
+            {% if jobs.has_next %}
+            <a
+                href="?page={{ jobs.next_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">Next
+                &rsaquo;</a>
+            <a
+                href="?page={{ jobs.paginator.num_pages }}{% if search_query %}&q={{ search_query }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">Last
+                &raquo;</a>
+            {% else %}
+            <span class="disabled">Next &rsaquo;</span>
+            <span class="disabled">Last &raquo;</span>
+            {% endif %}
     </div>
 
     {% else %}
     <div class="empty-state">
         <div class="empty-icon">🔍</div>
         <h3>No Jobs Found</h3>
-        <p>{% if search_query %}No results for "{{ search_query }}". Try a different search.{% else %}No jobs in the database yet. Run a sync to start collecting.{% endif %}</p>
+        <p>{% if search_query %}No results for "{{ search_query }}". Try a different search.{% else %}No jobs in the
+            database yet. Run a sync to start collecting.{% endif %}</p>
         <a href="{% url 'dashboard' %}" class="btn btn-primary">← Back to Dashboard</a>
     </div>
     {% endif %}

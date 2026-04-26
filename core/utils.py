@@ -138,8 +138,9 @@ def is_us_based(location):
             return False
 
     us_keywords = [
-        'usa', 'united states', 'us', 'remote', 'san francisco', 'new york', 'austin', 
-        'seattle', 'chicago', 'boston', 'wa', 'ca', 'ny', 'tx', 'fl'
+        'usa', 'united states', 'us', 'remote', 'san francisco', 'sf', 'new york', 'nyc',
+        'austin', 'seattle', 'chicago', 'boston', 'la', 'los angeles', 'dc', 'washington dc',
+        'al', 'ak', 'az', 'ar', 'ca', 'co', 'ct', 'de', 'fl', 'ga', 'hi', 'id', 'il', 'in', 'ia', 'ks', 'ky', 'la', 'me', 'md', 'ma', 'mi', 'mn', 'ms', 'mo', 'mt', 'ne', 'nv', 'nh', 'nj', 'nm', 'ny', 'nc', 'nd', 'oh', 'ok', 'or', 'pa', 'ri', 'sc', 'sd', 'tn', 'tx', 'ut', 'vt', 'va', 'wa', 'wv', 'wi', 'wy'
     ]
     # Check for US state codes (e.g., CA, NY, TX)
     state_codes = r'\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b'
@@ -291,3 +292,31 @@ def fetch_full_description(url):
         return ""
     except Exception as e:
         return ""
+
+def get_relative_time(dt):
+    """
+    Returns a human-readable 'time ago' string.
+    Specifically handles the client request: jobs within 24-48h show as '1 day ago'.
+    """
+    if not dt:
+        return "—"
+    
+    from django.utils import timezone
+    now = timezone.now()
+    if dt.tzinfo is None:
+        dt = timezone.make_aware(dt)
+        
+    diff = now - dt
+    seconds = diff.total_seconds()
+    
+    if seconds < 60:
+        return "Just now"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}m ago"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)}h ago"
+    if seconds < 172800: # Up to 48 hours (Revised from 36h)
+        return "1 day ago"
+    
+    # Fallback to date for very old ones (though they should be archived)
+    return dt.strftime('%b %d, %Y')

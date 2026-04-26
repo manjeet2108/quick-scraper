@@ -167,7 +167,6 @@ class SimplifyScraper:
     date_posted (unix timestamp), active, is_visible, category
     """
     REPOS = [
-        ("SimplifyJobs", "Summer2026-Internships", "dev"),
         ("SimplifyJobs", "New-Grad-Positions", "dev"),
     ]
 
@@ -199,10 +198,13 @@ class SimplifyScraper:
                     sponsorship = item.get('sponsorship', '')
                     category = item.get('category', '')
 
-                    # Parse unix timestamp
+                    # Parse timestamp (Use date_updated if newer than date_posted for freshness)
                     posted_ts = item.get('date_posted', 0)
+                    updated_ts = item.get('date_updated', 0)
+                    final_ts = max(posted_ts, updated_ts)
+                    
                     try:
-                        posted_date = datetime.fromtimestamp(posted_ts, tz=tz.utc)
+                        posted_date = datetime.fromtimestamp(final_ts, tz=tz.utc)
                     except Exception:
                         posted_date = None
 
@@ -210,6 +212,9 @@ class SimplifyScraper:
                     visa_type = ''
                     if sponsorship and 'offers sponsorship' in sponsorship.lower():
                         visa_type = 'H-1B'
+
+                    # Detect if it's an internship for engine-level filtering
+                    is_intern = 'intern' in title.lower() or 'intern' in category.lower()
 
                     jobs.append({
                         'source': f'Simplify/{repo}',
@@ -219,7 +224,7 @@ class SimplifyScraper:
                         'location': location_str,
                         'description': f"{title} at {company}. Category: {category}. Sponsorship: {sponsorship}.",
                         'external_apply_link': apply_url,
-                        'employment_type': 'Full-time',
+                        'employment_type': 'Internship' if is_intern else 'Full-time',
                         'salary_range': '',
                         'company_logo': '',
                         'posted_date': posted_date,
@@ -267,6 +272,8 @@ class JobrightScraper:
         "2026-Finance-Internship",
         "2026-Mechanical-Engineering-Internship",
         # New Grad
+        "2026-Software-Engineer-New-Grad",
+        "2026-Product-Management-New-Grad",
         "2026-Data-Analysis-New-Grad",
         "2026-Engineering-New-Grad",
         "2026-Business-Analyst-New-Grad",
@@ -409,8 +416,6 @@ class JobrightScraper:
             except Exception: continue
         return jobs
 
-        return jobs
-
     def _parse_date(self, date_str):
         if not date_str:
             return None
@@ -419,16 +424,16 @@ class JobrightScraper:
             # 1. Try "2026-04-25" format
             if re.match(r'\d{4}-\d{2}-\d{2}', date_str):
                 dt = datetime.strptime(date_str, "%Y-%m-%d")
-                return dt.replace(tzinfo=tz.utc)
+                return dt.replace(hour=23, minute=59, second=59, tzinfo=tz.utc)
             
             # 2. Try "Apr 19" format (assume current year)
             dt = datetime.strptime(f"{date_str}, 2026", "%b %d, %Y")
-            return dt.replace(tzinfo=tz.utc)
+            return dt.replace(hour=23, minute=59, second=59, tzinfo=tz.utc)
         except Exception:
             try:
                 # 3. Try "19 Apr" format
                 dt = datetime.strptime(f"{date_str}, 2026", "%d %b, %Y")
-                return dt.replace(tzinfo=tz.utc)
+                return dt.replace(hour=23, minute=59, second=59, tzinfo=tz.utc)
             except Exception:
                 return None
 

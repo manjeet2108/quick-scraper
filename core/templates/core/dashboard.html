@@ -42,8 +42,11 @@
     style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center; justify-content: flex-end;">
 
     <div class="filter-group" style="display: flex; gap: 10px; align-items: center;">
-        <button class="btn btn-primary" id="btn-trigger-sync" onclick="triggerSync()">
+        <button class="btn btn-primary" id="btn-trigger-sync" onclick="triggerSync()" {% if sync_running %}style="display:none;"{% endif %}>
             🚀 Trigger Sync Now
+        </button>
+        <button class="btn btn-danger" id="btn-stop-sync" onclick="stopSync()" {% if not sync_running %}style="display:none;"{% endif %}>
+            🛑 Stop Sync
         </button>
         <button class="btn btn-danger" onclick="clearAllJobs()">
             🗑️ Clear All Jobs
@@ -115,7 +118,7 @@
                 <td><span class="badge badge-visa">{{ job.visa_type|default:"—" }}</span></td>
                 <td class="truncate">{{ job.location }}</td>
                 <td><span class="badge badge-source">{{ job.source }}</span></td>
-                <td style="white-space: nowrap; font-size: 12px;">{{ job.posted_date|date:"M d, Y" }}</td>
+                <td style="white-space: nowrap; font-size: 12px;">{{ job.posted_date_relative }}</td>
                 <td><a href="{{ job.external_apply_link }}" target="_blank" class="apply-link">Apply →</a></td>
                 <td>
                     <button class="btn btn-sm btn-secondary" onclick="deleteJob({{ job.id }})" title="Delete Job">

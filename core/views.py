@@ -12,10 +12,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from core.models import Job
+from core.utils import get_relative_time
 
 # ── Global sync state ──
 _sync_state = {
     'running': False,
+    'start_time': None,
     'last_sync': None,
     'last_scraped': 0,
     'last_saved': 0,
@@ -43,6 +45,8 @@ def dashboard(request):
 
     # Recent jobs
     recent_jobs = Job.objects.order_by('-created_at')[:15]
+    for j in recent_jobs:
+        j.posted_date_relative = get_relative_time(j.posted_date)
 
     context = {
         'total_jobs': total_jobs,
@@ -103,6 +107,10 @@ def job_list(request):
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
 
+    # Add relative time for display
+    for job in page_obj:
+        job.posted_date_relative = get_relative_time(job.posted_date)
+
     context = {
         'jobs': page_obj,
         'search_query': search_query,
@@ -119,6 +127,9 @@ def job_detail(request, job_id):
     """Single job detail page."""
     job = get_object_or_404(Job, id=job_id)
     skills_list = [s.strip() for s in job.skills.split(',') if s.strip()] if job.skills else []
+    
+    # Add relative time for display
+    job.posted_date_relative = get_relative_time(job.posted_date)
 
     context = {
         'job': job,
@@ -131,19 +142,27 @@ def job_detail(request, job_id):
 @csrf_exempt
 @require_POST
 def api_trigger_sync(request):
-    """API endpoint to trigger a sync from the dashboard."""
+    """API endpoint to trigger a continuous sync."""
     global _sync_state
 
     if _sync_state['running']:
         return JsonResponse({'status': 'busy', 'message': 'Sync already running'})
 
-    def run_sync():
+    def run_sync_task():
         global _sync_state
         _sync_state['running'] = True
+        _sync_state['start_time'] = timezone.now().isoformat()
+        _sync_state['last_scraped'] = 0
+        _sync_state['last_saved'] = 0
+        
+        def should_continue():
+            return _sync_state['running']
+
         try:
             from core.scrapers.engine import ScraperEngine
             engine = ScraperEngine()
-            engine.run_sync()
+            engine.run_sync(should_continue=should_continue)
+            
             _sync_state['last_scraped'] = getattr(engine, '_last_scraped', 0)
             _sync_state['last_saved'] = getattr(engine, '_last_saved', 0)
         except Exception as e:
@@ -152,15 +171,24 @@ def api_trigger_sync(request):
             _sync_state['running'] = False
             _sync_state['last_sync'] = timezone.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    thread = threading.Thread(target=run_sync, daemon=True)
+    thread = threading.Thread(target=run_sync_task, daemon=True)
     thread.start()
 
     return JsonResponse({
         'status': 'ok',
-        'message': 'Sync started in background',
-        'scraped': 0,
-        'saved': 0,
+        'message': 'Continuous sync started',
     })
+
+
+@csrf_exempt
+@require_POST
+def api_stop_sync(request):
+    """API endpoint to stop the continuous sync."""
+    global _sync_state
+    if _sync_state['running']:
+        _sync_state['running'] = False
+        return JsonResponse({'status': 'ok', 'message': 'Stop signal sent'})
+    return JsonResponse({'status': 'ok', 'message': 'Not running'})
 
 
 def api_status(request):
@@ -179,13 +207,14 @@ def api_status(request):
             'location': j.location,
             'source': j.source,
             'visa_type': j.visa_type,
-            'posted_date': j.posted_date.strftime('%b %d, %Y') if j.posted_date else '—',
+            'posted_date': get_relative_time(j.posted_date),
             'external_apply_link': j.external_apply_link,
             'url': f"/jobs/{j.id}/"
         })
 
     return JsonResponse({
         'syncing': _sync_state['running'],
+        'start_time': _sync_state['start_time'],
         'last_sync': _sync_state['last_sync'],
         'total_jobs': Job.objects.count(),
         'published_jobs': Job.objects.filter(is_published=True).count(),

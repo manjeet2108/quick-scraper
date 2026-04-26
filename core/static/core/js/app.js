@@ -38,7 +38,7 @@ function hideLoading() {
 
 // ── Trigger Sync ──
 function triggerSync() {
-    showLoading('Running sync across all 11 sources…');
+    showToast('🚀 Continuous sync starting...', 'info');
     
     fetch('/api/trigger-sync/', {
         method: 'POST',
@@ -49,25 +49,35 @@ function triggerSync() {
     })
     .then(res => res.json())
     .then(data => {
-        hideLoading();
         if (data.status === 'ok') {
-            Swal.fire({
-                title: 'Sync Started!',
-                text: 'The scraper is now running in the background. New jobs will appear on your dashboard automatically.',
-                icon: 'success',
-                background: '#111827',
-                color: '#fff',
-                confirmButtonColor: '#6366f1'
-            });
-            addLogEntry(`Sync started: Background engine active.`, 'success');
+            document.getElementById('btn-trigger-sync').style.display = 'none';
+            document.getElementById('btn-stop-sync').style.display = 'inline-block';
+            addLogEntry(`Sync started: Scraper will run continuously until stopped.`, 'success');
         } else {
             showToast('⚠️ Sync already running', 'warning');
         }
     })
     .catch(err => {
-        hideLoading();
         showToast('❌ Sync failed: ' + err.message, 'error');
         addLogEntry('Sync failed: ' + err.message, 'error');
+    });
+}
+
+// ── Stop Sync ──
+function stopSync() {
+    fetch('/api/stop-sync/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            showToast('🛑 Stop signal sent', 'info');
+            addLogEntry('Stop signal sent to engine...', 'warn');
+        }
     });
 }
 
@@ -203,24 +213,29 @@ function getCookie(name) {
     return cookieValue;
 }
 
-// ── Auto-refresh dashboard data every 10-30s ──
+// ── Auto-refresh dashboard data every 3s ──
+let lastJobId = null;
+
 setInterval(() => {
     fetch('/api/status/')
         .then(r => r.json())
         .then(data => {
-            // 1. Update Sync Status Indicator
             const statusEl = document.getElementById('sync-status');
             const labelEl = document.getElementById('sync-label');
             const triggerBtn = document.getElementById('btn-trigger-sync');
+            const stopBtn = document.getElementById('btn-stop-sync');
             
+            // 1. Update Sync Status Indicator
             if (data.syncing) {
-                statusEl.className = 'sync-status running';
-                labelEl.textContent = 'Syncing…';
-                if (triggerBtn) triggerBtn.disabled = true;
+                if (statusEl) statusEl.className = 'sync-status running';
+                if (labelEl) labelEl.textContent = 'Syncing...';
+                if (triggerBtn) triggerBtn.style.display = 'none';
+                if (stopBtn) stopBtn.style.display = 'inline-block';
             } else {
-                statusEl.className = 'sync-status idle';
-                labelEl.textContent = 'Idle';
-                if (triggerBtn) triggerBtn.disabled = false;
+                if (statusEl) statusEl.className = 'sync-status idle';
+                if (labelEl) labelEl.textContent = 'Idle';
+                if (triggerBtn) triggerBtn.style.display = 'inline-block';
+                if (stopBtn) stopBtn.style.display = 'none';
             }
 
             // 2. Update Stats Cards (Only on Dashboard)
@@ -247,40 +262,46 @@ setInterval(() => {
             // 4. Update Recent Jobs Table (Only on Dashboard)
             const tableBody = document.querySelector('.table-container table tbody');
             if (tableBody && data.recent_jobs && data.recent_jobs.length > 0) {
-                // If it's the dashboard's recent jobs table
-                const rows = data.recent_jobs.map(job => `
-                    <tr data-job-id="${job.id}">
-                        <td>
-                            <a href="${job.url}" style="text-decoration: none;">
-                                <div class="job-title-cell">
-                                    ${job.company_logo ? 
-                                        `<img src="${job.company_logo}" class="job-logo" alt="${job.company}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                                         <div class="job-logo-placeholder" style="display:none;">${job.company.charAt(0)}</div>` : 
-                                        `<div class="job-logo-placeholder">${job.company.charAt(0)}</div>`
-                                    }
-                                    <div class="job-info">
-                                        <span class="job-title">${job.title}</span>
-                                        <span class="job-company">${job.company}</span>
-                                    </div>
-                                </div>
-                            </a>
-                        </td>
-                        <td><span class="badge badge-visa">${job.visa_type || '—'}</span></td>
-                        <td class="truncate">${job.location}</td>
-                        <td><span class="badge badge-source">${job.source}</span></td>
-                        <td style="white-space: nowrap; font-size: 12px;">${job.posted_date}</td>
-                        <td><a href="${job.external_apply_link}" target="_blank" class="apply-link">Apply →</a></td>
-                        <td>
-                            <button class="btn btn-sm btn-secondary" onclick="deleteJob(${job.id})" title="Delete Job">❌</button>
-                        </td>
-                    </tr>
-                `).join('');
+                const currentLastId = data.recent_jobs[0].id;
                 
-                // Only update if content changed to avoid annoying flickering
-                if (tableBody.innerHTML !== rows) {
+                // Only rewrite table if a NEW job has arrived
+                if (currentLastId !== lastJobId) {
+                    const rows = data.recent_jobs.map(job => `
+                        <tr data-job-id="${job.id}">
+                            <td>
+                                <a href="${job.url}" style="text-decoration: none;">
+                                    <div class="job-title-cell">
+                                        ${job.company_logo ? 
+                                            `<img src="${job.company_logo}" class="job-logo" alt="${job.company}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                                             <div class="job-logo-placeholder" style="display:none;">${job.company.charAt(0)}</div>` : 
+                                            `<div class="job-logo-placeholder">${job.company.charAt(0)}</div>`
+                                        }
+                                        <div class="job-info">
+                                            <span class="job-title">${job.title}</span>
+                                            <span class="job-company">${job.company}</span>
+                                        </div>
+                                    </div>
+                                </a>
+                            </td>
+                            <td><span class="badge badge-visa">${job.visa_type || '—'}</span></td>
+                            <td class="truncate">${job.location}</td>
+                            <td><span class="badge badge-source">${job.source}</span></td>
+                            <td style="white-space: nowrap; font-size: 12px;">${job.posted_date}</td>
+                            <td><a href="${job.external_apply_link}" target="_blank" class="apply-link">Apply →</a></td>
+                            <td>
+                                <button class="btn btn-sm btn-secondary" onclick="deleteJob(${job.id})" title="Delete Job">❌</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                    
                     tableBody.innerHTML = rows;
+                    lastJobId = currentLastId;
+                    
+                    if (data.syncing) {
+                        addLogEntry(`New jobs found! Dashboard refreshed.`, 'success');
+                    }
                 }
             }
         })
         .catch(() => {});
-}, 10000); // 10 seconds for a more "live" feel
+}, 3000); 

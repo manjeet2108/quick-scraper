@@ -4,7 +4,8 @@
 
 {% block content %}
 <div class="detail-container">
-    <a href="{% url 'job_list' %}" class="back-link" style="margin-bottom: 20px; display: inline-flex;">← Back to Jobs</a>
+    <a href="{% url 'job_list' %}" class="back-link" style="margin-bottom: 20px; display: inline-flex;">← Back to
+        Jobs</a>
 
     <div class="detail-card">
         <!-- Header -->
@@ -12,7 +13,7 @@
             <div class="detail-header-top">
                 {% if job.company_logo %}
                 <img src="{{ job.company_logo }}" class="detail-logo" alt="{{ job.company }}"
-                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                 <div class="detail-logo-placeholder" style="display:none;">{{ job.company|first }}</div>
                 {% else %}
                 <div class="detail-logo-placeholder">{{ job.company|first }}</div>
@@ -30,7 +31,7 @@
                     <span class="icon">💼</span> {{ job.employment_type|default:"Full-time" }}
                 </div>
                 <div class="detail-meta-item">
-                    <span class="icon">📅</span> {{ job.posted_date|date:"M d, Y"|default:"Recently" }}
+                    <span class="icon">📅</span> {{ job.posted_date_relative|default:"Recently" }}
                 </div>
                 {% if job.salary_range and job.salary_range != "None-None" %}
                 <div class="detail-meta-item">
